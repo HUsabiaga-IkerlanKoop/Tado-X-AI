@@ -408,5 +408,5 @@ class TadoXApi:
         await self._request(
             "PATCH",
             f"{TADO_HOPS_API_URL}/homes/{self._home_id}/roomsAndDevices/devices/{device_serial}",
-            json={"temperatureOffset": offset},
+            json_data={"temperatureOffset": offset},
         )
