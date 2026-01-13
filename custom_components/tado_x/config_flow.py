@@ -1,4 +1,4 @@
-"""Config flow for Tado X integration."""
+﻿"""Config flow for Tado X integration."""
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +8,8 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TadoXApi, TadoXAuthError
@@ -48,7 +49,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle the initial step - start device auth."""
         errors: dict[str, str] = {}
 
@@ -85,7 +86,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_auth(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle the authentication step."""
         errors: dict[str, str] = {}
 
@@ -128,7 +129,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_select_home(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle home selection when multiple homes exist."""
         if user_input is not None:
             home_id = user_input[CONF_HOME_ID]
@@ -150,7 +151,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_configure(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle configuration of polling rate."""
         if user_input is not None:
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -199,7 +200,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
         geofencing_enabled: bool = False,
         min_temp: float = MIN_TEMP,
         max_temp: float = MAX_TEMP,
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Create the config entry."""
         if not self._api:
             return self.async_abort(reason="unknown")
@@ -227,13 +228,13 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle reauthorization."""
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle reauthorization confirmation."""
         errors: dict[str, str] = {}
 
@@ -263,7 +264,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth_auth(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle reauthorization authentication."""
         errors: dict[str, str] = {}
 

@@ -101,18 +101,18 @@ class TadoXApi:
                 result = await response.json()
                 _LOGGER.warning("Device auth successful, got user_code: %s", result.get("user_code"))
                 return result
-            except asyncio.TimeoutError as err:
-                _LOGGER.error("Timeout during device auth request (30s)")
-                raise TadoXAuthError("Timeout during device auth request") from err
-            except aiohttp.ClientError as err:
-                _LOGGER.error("Network error during device auth: %s (type: %s)", err, type(err).__name__)
-                raise TadoXAuthError(f"Network error: {err}") from err
-            except ssl.SSLError as err:
-                _LOGGER.error("SSL error during device auth: %s", err)
-                raise TadoXAuthError(f"SSL error: {err}") from err
-            except Exception as err:
-                _LOGGER.error("Unexpected error during device auth: %s (type: %s)", err, type(err).__name__)
-                raise TadoXAuthError(f"Unexpected error: {err}") from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.error("Timeout during device auth request (30s)")
+            raise TadoXAuthError("Timeout during device auth request") from err
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Network error during device auth: %s (type: %s)", err, type(err).__name__)
+            raise TadoXAuthError(f"Network error: {err}") from err
+        except ssl.SSLError as err:
+            _LOGGER.error("SSL error during device auth: %s", err)
+            raise TadoXAuthError(f"SSL error: {err}") from err
+        except Exception as err:
+            _LOGGER.error("Unexpected error during device auth: %s (type: %s)", err, type(err).__name__)
+            raise TadoXAuthError(f"Unexpected error: {err}") from err
 
     async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 300) -> bool:
         """Poll for the access token after user authorizes.
