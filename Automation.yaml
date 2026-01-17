@@ -1,0 +1,180 @@
+alias: Tado X - Sync Radiator Offset - Egongela atea
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation. Runs every 102 minutes (14x/day).
+triggers:
+  - trigger: time_pattern
+    minutes: "/102"
+conditions: []
+actions:
+  - variables:
+      entity_room_sensor: sensor.air_quality_egongela_temperature_2
+      entity_valve_sensor: sensor.vanne_2_egongela_device_temperature
+      entity_offset: number.egongela_va04_temperature_offset_2
+      hysteresis: 0.5
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is
+      not none }}
+  - variables:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+      new_offset: >
+        {% if calculated_offset > 3 %} 3 {% elif calculated_offset < -3 %} -3 {%
+        else %} {{ calculated_offset }} {% endif %}
+  - condition: template
+    value_template: |
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single
+
+alias: Tado X - Sync Radiator Offset - Egongela Bazkaltokia
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation. Runs every 102 minutes (14x/day).
+triggers:
+  - trigger: time_pattern
+    minutes: "20, 2, 44, 26, 8, 50, 32, 14, 56, 38, 20, 2, 44, 26"
+conditions: []
+actions:
+  - variables:
+      entity_room_sensor: sensor.air_quality_egongela_temperature_2
+      entity_valve_sensor: sensor.vanne_1_egongela_device_temperature
+      entity_offset: number.egongela_va04_temperature_offset
+      hysteresis: 0.5
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is
+      not none }}
+  - variables:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+      new_offset: >
+        {% if calculated_offset > 3 %} 3 {% elif calculated_offset < -3 %} -3 {%
+        else %} {{ calculated_offset }} {% endif %}
+  - condition: template
+    value_template: |
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single
+
+alias: Tado X - Sync Radiator Offset - Egongela TV
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation. Runs every 102 minutes (14x/day).
+triggers:
+  - trigger: time_pattern
+    minutes: "40, 22, 4, 46, 28, 10, 52, 34, 16, 58, 40, 22, 4, 46"
+conditions: []
+actions:
+  - variables:
+      entity_room_sensor: sensor.air_quality_egongela_temperature_2
+      entity_valve_sensor: sensor.vanne_3_egongela_device_temperature
+      entity_offset: number.egongela_va04_temperature_offset_3
+      hysteresis: 0.5
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is
+      not none }}
+  - variables:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+      new_offset: >
+        {% if calculated_offset > 3 %} 3 {% elif calculated_offset < -3 %} -3 {%
+        else %} {{ calculated_offset }} {% endif %}
+  - condition: template
+    value_template: |
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single
+
+alias: Tado X - Sync Radiator Offset - Logela 1
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation. Runs every 102 minutes (14x/day).
+triggers:
+  - trigger: time_pattern
+    minutes: "0, 42, 24, 6, 48, 30, 12, 54, 36, 18, 0, 42, 24, 6"
+actions:
+  - variables:
+      entity_room_sensor: sensor.air_quality_logela_1_temperature
+      entity_valve_sensor: sensor.vanne_egongela_device_temperature
+      entity_offset: number.logela_1_va04_temperature_offset
+      hysteresis: 0.5
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is
+      not none }}
+  - variables:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+      new_offset: >
+        {% if calculated_offset > 3 %} 3 {% elif calculated_offset < -3 %} -3 {%
+        else %} {{ calculated_offset }} {% endif %}
+  - condition: template
+    value_template: |
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single
+
+alias: Tado X - Sync Radiator Offset - Logela 2
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation. Runs every 102 minutes (14x/day).
+triggers:
+  - trigger: time_pattern
+    minutes: "10, 52, 34, 16, 58, 40, 22, 4, 46, 28, 10, 52, 34, 16"
+conditions: []
+actions:
+  - variables:
+      entity_room_sensor: sensor.air_quality_logela_2_temperature
+      entity_valve_sensor: sensor.vanne_logela_2_device_temperature
+      entity_offset: number.logela_2_va04_temperature_offset
+      hysteresis: 0.5
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is
+      not none }}
+  - variables:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+      new_offset: >
+        {% if calculated_offset > 3 %} 3 {% elif calculated_offset < -3 %} -3 {%
+        else %} {{ calculated_offset }} {% endif %}
+  - condition: template
+    value_template: |
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single
+
+

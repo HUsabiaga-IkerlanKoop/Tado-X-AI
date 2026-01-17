@@ -1,0 +1,55 @@
+alias: Tado X - Sync Radiator Offset
+description: >-
+  Automatically updates the Tado X radiator valve temperature offset based on an
+  external room sensor, with hysteresis and validation.
+triggers:
+  - entity_id:
+      - sensor.vanne_egongela_device_temperature
+      - sensor.air_quality_logela_1_temperature
+    trigger: state
+actions:
+  - variables:
+      # --- Configuration ---
+      # External room sensor (The reference temperature)
+      entity_room_sensor: sensor.air_quality_logela_1_temperature
+      # Tado valve temperature sensor (The raw measured temperature)
+      entity_valve_sensor: sensor.vanne_1_egongela_device_temperature
+      # Tado offset entity
+      entity_offset: number.logela_1_va04_temperature_offset
+      # Hysteresis threshold (don't update if change is smaller than this)
+      hysteresis: 0.5
+
+      # --- Values ---
+      room_temp: "{{ states(entity_room_sensor) | float(None) }}"
+      valve_temp: "{{ states(entity_valve_sensor) | float(None) }}"
+      current_offset: "{{ states(entity_offset) | float(None) }}"
+
+  # 1. Validation: Check if all sensors are available
+  - condition: template
+    value_template: >
+      {{ room_temp is not none and valve_temp is not none and current_offset is not none }}
+
+  - variables:
+      # Calculate required offset: Room - Valve (assuming Valve is Raw)
+      # If Valve sensor includes offset: calculated_offset = current_offset + (room_temp - valve_temp)
+      # Utilizing Tado's standard behavior where device_temperature is usually BEFORE offset:
+      calculated_offset: "{{ (room_temp - valve_temp) | round(1) }}"
+
+      # Clamp valid Tado offset range (User defined limit: +-3 degrees)
+      new_offset: >
+        {% if calculated_offset > 3 %} 3
+        {% elif calculated_offset < -3 %} -3
+        {% else %} {{ calculated_offset }}
+        {% endif %}
+
+  # 2. Hysteresis Check: Only proceed if the difference is significant
+  - condition: template
+    value_template: >
+      {{ (new_offset - current_offset) | abs > hysteresis }}
+
+  - data:
+      value: "{{ new_offset }}"
+    action: number.set_value
+    target:
+      entity_id: "{{ entity_offset }}"
+mode: single

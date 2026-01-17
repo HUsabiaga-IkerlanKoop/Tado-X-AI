@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import TadoXApi, TadoXApiError, TadoXAuthError
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import DEFAULT_SCAN_INTERVAL, DEFAULT_OFFSET_HYSTERESIS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +79,9 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         geofencing_enabled: bool = False,
         min_temp: float | None = None,
         max_temp: float | None = None,
+        auto_offset_sync: bool = False,
+        room_configs: list[dict[str, str]] | None = None,
+        offset_hysteresis: float = DEFAULT_OFFSET_HYSTERESIS,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -94,6 +97,33 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         self.geofencing_enabled = geofencing_enabled
         self.min_temp = min_temp
         self.max_temp = max_temp
+        self.auto_offset_sync = auto_offset_sync
+        self.room_configs = room_configs or []
+        self.offset_hysteresis = offset_hysteresis
+        self._pending_offset_updates: dict[str, float] = {}
+
+    async def async_batch_update_temperature_offsets(
+        self, offsets: dict[str, float]
+    ) -> dict[str, str]:
+        """Update multiple device temperature offsets in a single operation.
+        
+        This method batches multiple offset updates and executes them in parallel,
+        minimizing the time window and ensuring all updates happen during the same
+        refresh cycle.
+        
+        Args:
+            offsets: Dictionary mapping device serial numbers to offset values
+        
+        Returns:
+            Dictionary with results for each device
+        """
+        _LOGGER.info("Batch updating %d device temperature offsets", len(offsets))
+        results = await self.api.set_multiple_device_temperature_offsets(offsets)
+        
+        # Request a coordinator refresh to update entities with new values
+        await self.async_request_refresh()
+        
+        return results
 
     async def async_geofencing_check(self, home_state: dict[str, Any] | None = None) -> str | None:
         """Check geofencing status and set home/away mode as in tado_aa.
@@ -293,6 +323,10 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                 data.other_devices.append(device)
                 data.devices[device.serial_number] = device
 
+            # Auto-sync temperature offsets if enabled
+            if self.auto_offset_sync and self.offset_mappings:
+                await self._auto_sync_temperature_offsets(data)
+
             return data
 
         except TadoXAuthError as err:
@@ -302,3 +336,123 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         except Exception as err:
             _LOGGER.exception("Unexpected error fetching Tado X data")
             raise UpdateFailed(f"Unexpected error: {err}") from err
+
+    async def _auto_sync_temperature_offsets(self, data: TadoXData) -> None:
+        """Automatically sync temperature offsets based on configured room mappings.
+        
+        This runs during the coordinator update cycle, using entity IDs instead of
+        device serials for easier configuration.
+        
+        Room config format: [{"offset_entity": "number.room_offset", "temperature_sensor": "sensor.room_temp"}]
+        """
+        offsets_to_update: dict[str, float] = {}
+        
+        from homeassistant.helpers import entity_registry as er
+        entity_registry = er.async_get(self.hass)
+        
+        for room_config in self.room_configs:
+            offset_entity_id = room_config.get("offset_entity")
+            temp_sensor_entity_id = room_config.get("temperature_sensor")
+            
+            if not offset_entity_id or not temp_sensor_entity_id:
+                _LOGGER.warning("Invalid room config: %s", room_config)
+                continue
+            
+            # Get the offset entity to find its device
+            offset_entity = entity_registry.async_get(offset_entity_id)
+            if not offset_entity or not offset_entity.device_id:
+                _LOGGER.debug("Offset entity %s not found or has no device", offset_entity_id)
+                continue
+            
+            # Get device serial from the device registry
+            from homeassistant.helpers import device_registry as dr
+            device_registry = dr.async_get(self.hass)
+            device = device_registry.async_get(offset_entity.device_id)
+            if not device:
+                _LOGGER.debug("Device not found for entity %s", offset_entity_id)
+                continue
+            
+            # Extract serial number from device identifiers
+            device_serial = None
+            for identifier in device.identifiers:
+                if identifier[0] == DOMAIN and len(identifier) > 1:
+                    # Serial is usually part of the identifier
+                    device_serial = str(identifier[1])
+                    break
+            
+            if not device_serial:
+                _LOGGER.debug("Could not find serial for device %s", device.id)
+                continue
+            
+            # Get device data from coordinator
+            device_data = data.devices.get(device_serial)
+            if not device_data:
+                _LOGGER.debug("Device %s not found in coordinator data", device_serial)
+                continue
+            
+            # Get valve temperature (raw measurement)
+            valve_temp = device_data.temperature_measured
+            if valve_temp is None:
+                _LOGGER.debug("Device %s has no temperature measurement", device_serial)
+                continue
+            
+            # Get current offset
+            current_offset = device_data.temperature_offset
+            
+            # Get room sensor temperature from Home Assistant state
+            room_sensor_state = self.hass.states.get(temp_sensor_entity_id)
+            if not room_sensor_state or room_sensor_state.state in ("unknown", "unavailable"):
+                _LOGGER.debug("Room sensor %s unavailable", temp_sensor_entity_id)
+                continue
+            
+            try:
+                room_temp = float(room_sensor_state.state)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Invalid temperature from %s: %s", 
+                               temp_sensor_entity_id, room_sensor_state.state)
+                continue
+            
+            # Calculate required offset: room_temp - valve_temp
+            calculated_offset = round(room_temp - valve_temp, 1)
+            
+            # Clamp to valid range (-3 to +3 for safety)
+            new_offset = max(-3.0, min(3.0, calculated_offset))
+            
+            # Check if update needed (hysteresis)
+            offset_delta = abs(new_offset - current_offset)
+            if offset_delta > self.offset_hysteresis:
+                offsets_to_update[device_serial] = new_offset
+                _LOGGER.info(
+                    "Offset sync for %s (%s): room=%.1f°C, valve=%.1f°C, "
+                    "current_offset=%.1f°C, new_offset=%.1f°C (delta=%.1f°C)",
+                    offset_entity_id, device_serial, room_temp, valve_temp, 
+                    current_offset, new_offset, offset_delta
+                )
+            else:
+                _LOGGER.debug(
+                    "Offset for %s within hysteresis (delta=%.1f°C < %.1f°C)",
+                    offset_entity_id, offset_delta, self.offset_hysteresis
+                )
+        
+        # Apply all offset updates in parallel if any are needed
+        if offsets_to_update:
+            _LOGGER.info("Auto-syncing %d device offsets", len(offsets_to_update))
+            try:
+                results = await self.api.set_multiple_device_temperature_offsets(offsets_to_update)
+                
+                # Log results
+                success_count = sum(1 for status in results.values() if status == "success")
+                _LOGGER.info(
+                    "Auto offset sync completed: %d successful, %d failed",
+                    success_count, len(results) - success_count
+                )
+                
+                for device_serial, status in results.items():
+                    if status != "success":
+                        _LOGGER.error("Failed to auto-sync offset for %s: %s", 
+                                     device_serial, status)
+            except Exception as err:
+                _LOGGER.error("Failed to auto-sync offsets: %s", err)
+        else:
+            _LOGGER.debug("No offset updates needed (all within hysteresis)")
+

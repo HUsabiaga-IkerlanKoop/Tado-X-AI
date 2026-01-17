@@ -1,0 +1,50 @@
+# Tado X Integration - Automatic Offset Sync Configuration
+# Add this to your configuration.yaml to enable automatic temperature offset synchronization
+
+tado_x:
+  # Scan interval (in seconds): How often to fetch data and sync offsets
+  scan_interval: 1800 # 30 minutes = 48 polls/day
+
+  # Enable automatic offset synchronization
+  auto_offset_sync: true
+
+  # Hysteresis threshold (in degrees Celsius)
+  offset_hysteresis: 0.5
+
+  # Room Configuration
+  # For each room, specify the offset entity and the reference temperature sensor
+  # Entity IDs can be easily copied from Settings → Devices & Services → Entities
+
+  rooms:
+    # Egongela - Multiple TRVs in same room
+    - offset_entity: number.egongela_va04_temperature_offset_2
+      temperature_sensor: sensor.air_quality_egongela_temperature_2
+
+    - offset_entity: number.egongela_va04_temperature_offset
+      temperature_sensor: sensor.air_quality_egongela_temperature_2
+
+    - offset_entity: number.egongela_va04_temperature_offset_3
+      temperature_sensor: sensor.air_quality_egongela_temperature_2
+
+    # Logela 1
+    - offset_entity: number.logela_1_va04_temperature_offset
+      temperature_sensor: sensor.air_quality_logela_1_temperature
+
+    # Logela 2
+    - offset_entity: number.logela_2_va04_temperature_offset
+      temperature_sensor: sensor.air_quality_logela_2_temperature
+
+# HOW TO FIND ENTITY IDs:
+#
+# 1. Go to Settings → Devices & Services → Entities
+# 2. Filter by "tado" or "offset" to find your TRV offset entities
+#    They look like: number.ROOM_va04_temperature_offset
+# 3. Copy the entity ID
+# 4. Find your external temperature sensors (e.g., "sensor.air_quality_room_temperature")
+# 5. Pair them in the configuration above
+#
+# After configuration:
+# 1. Restart Home Assistant
+# 2. Check logs: Settings → System → Logs → Filter "tado_x"
+# 3. You should see: "Auto-syncing X device offsets"
+

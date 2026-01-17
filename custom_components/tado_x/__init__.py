@@ -8,7 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -24,7 +24,11 @@ from .const import (
     CONF_GEOFENCING_ENABLED,
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
+    CONF_AUTO_OFFSET_SYNC,
+    CONF_ROOMS,
+    CONF_OFFSET_HYSTERESIS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_OFFSET_HYSTERESIS,
     DOMAIN,
     PLATFORMS,
 )
@@ -104,6 +108,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     )
     _LOGGER.info("Using scan interval: %s seconds", scan_interval)
+    
+    # Get offset sync configuration from YAML
+    auto_offset_sync = yaml_config.get(CONF_AUTO_OFFSET_SYNC, False)
+    room_configs = yaml_config.get(CONF_ROOMS, [])
+    offset_hysteresis = yaml_config.get(CONF_OFFSET_HYSTERESIS, DEFAULT_OFFSET_HYSTERESIS)
+    
+    if auto_offset_sync and room_configs:
+        _LOGGER.info("Auto offset sync enabled with %d room configurations", len(room_configs))
 
     # Ensure home device exists before platforms/entities reference via_device
     from homeassistant.helpers import device_registry as dr
@@ -118,14 +130,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create coordinator
     coordinator = TadoXDataUpdateCoordinator(
-        hass=hass,
-        api=api,
-        home_id=home_id,
+        hass=hass,auto_offset_sync,
+        room_configs=room_configs,
+        offset_hysteresis=offset_hysteresis
         home_name=home_name,
         scan_interval=scan_interval,
         geofencing_enabled=entry.data.get(CONF_GEOFENCING_ENABLED, False),
         min_temp=entry.data.get(CONF_MIN_TEMP),
         max_temp=entry.data.get(CONF_MAX_TEMP),
+        auto_offset_sync=entry.data.get(CONF_AUTO_OFFSET_SYNC, False),
+        offset_mappings=entry.data.get(CONF_OFFSET_MAPPINGS, {}),
+        offset_hysteresis=entry.data.get(CONF_OFFSET_HYSTERESIS, DEFAULT_OFFSET_HYSTERESIS),
     )
 
     # Fetch initial data
@@ -138,6 +153,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register batch offset update service
+    async def async_batch_update_offsets(call: ServiceCall) -> None:
+        """Handle batch temperature offset update service call."""
+        offsets = call.data.get("offsets", {})
+        
+        if not offsets:
+            _LOGGER.warning("No offsets provided to batch update service")
+            return
+        
+        _LOGGER.info("Batch offset update service called with %d devices", len(offsets))
+        results = await coordinator.async_batch_update_temperature_offsets(offsets)
+        
+        # Log results
+        success_count = sum(1 for status in results.values() if status == "success")
+        _LOGGER.info(
+            "Batch offset update completed: %d successful, %d failed out of %d total",
+            success_count,
+            len(results) - success_count,
+            len(results),
+        )
+        
+        for device_serial, status in results.items():
+            if status != "success":
+                _LOGGER.error("Failed to update offset for device %s: %s", device_serial, status)
+
+    # Register the service only once (for the first entry)
+    if not hass.services.has_service(DOMAIN, "batch_update_temperature_offsets"):
+        hass.services.async_register(
+            DOMAIN,
+            "batch_update_temperature_offsets",
+            async_batch_update_offsets,
+            schema=vol.Schema({
+                vol.Required("offsets"): vol.Schema({
+                    cv.string: vol.All(vol.Coerce(float), vol.Range(min=-9.9, max=9.9))
+                })
+            }),
+        )
+        _LOGGER.info("Registered batch_update_temperature_offsets service")
 
     return True
 

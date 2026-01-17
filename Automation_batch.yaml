@@ -1,0 +1,70 @@
+alias: Tado X - Batch Sync All Radiator Offsets
+description: >-
+  Automatically calculates and updates ALL Tado X radiator valve temperature offsets
+  in a single batch operation. Uses the new batch service to minimize API calls.
+  Runs once per hour using only 1 API call for all offset updates + 1 for data refresh.
+triggers:
+  - trigger: time_pattern
+    hours: "/1" # Every hour
+    minutes: "0"
+conditions: []
+actions:
+  - variables:
+      # Configuration for all rooms
+      rooms:
+        - room_sensor: sensor.air_quality_egongela_temperature_2
+          valve_sensor: sensor.vanne_2_egongela_device_temperature
+          device_serial: RU01234567890 # REPLACE with actual serial from device
+        - room_sensor: sensor.air_quality_egongela_temperature_2
+          valve_sensor: sensor.vanne_1_egongela_device_temperature
+          device_serial: RU01234567891 # REPLACE with actual serial
+        - room_sensor: sensor.air_quality_egongela_temperature_2
+          valve_sensor: sensor.vanne_3_egongela_device_temperature
+          device_serial: RU01234567892 # REPLACE with actual serial
+        - room_sensor: sensor.air_quality_logela_1_temperature
+          valve_sensor: sensor.vanne_egongela_device_temperature
+          device_serial: RU01234567893 # REPLACE with actual serial
+        - room_sensor: sensor.air_quality_logela_2_temperature
+          valve_sensor: sensor.vanne_logela_2_device_temperature
+          device_serial: RU01234567894 # REPLACE with actual serial
+      hysteresis: 0.5
+
+  # Calculate all offsets using Jinja2 templating
+  - variables:
+      calculated_offsets: >
+        {% set ns = namespace(offsets={}) %}
+        {% for room in rooms %}
+          {% set room_temp = states(room.room_sensor) | float(None) %}
+          {% set valve_temp = states(room.valve_sensor) | float(None) %}
+          {% set current_offset = state_attr('number.' ~ room.device_serial | lower ~ '_temperature_offset', 'value') | float(None) %}
+          
+          {% if room_temp is not none and valve_temp is not none and current_offset is not none %}
+            {% set calculated = (room_temp - valve_temp) | round(1) %}
+            {% set new_offset = [[-3, calculated] | max, 3] | min %}
+            
+            {% if (new_offset - current_offset) | abs > hysteresis %}
+              {% set ns.offsets = dict(ns.offsets, **{room.device_serial: new_offset}) %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.offsets }}
+
+  # Only call service if there are offsets to update
+  - if:
+      - condition: template
+        value_template: "{{ calculated_offsets | length > 0 }}"
+    then:
+      - action: tado_x.batch_update_temperature_offsets
+        data:
+          offsets: "{{ calculated_offsets }}"
+      - action: system_log.write
+        data:
+          message: "Batch updated {{ calculated_offsets | length }} device offsets: {{ calculated_offsets }}"
+          level: info
+    else:
+      - action: system_log.write
+        data:
+          message: "No offset updates needed (all within hysteresis threshold)"
+          level: debug
+
+mode: single

@@ -410,3 +410,51 @@ class TadoXApi:
             f"{TADO_HOPS_API_URL}/homes/{self._home_id}/roomsAndDevices/devices/{device_serial}",
             json_data={"temperatureOffset": offset},
         )
+
+    async def set_multiple_device_temperature_offsets(
+        self, offsets: dict[str, float]
+    ) -> dict[str, str]:
+        """Set temperature offsets for multiple devices in parallel.
+        
+        This method makes parallel API calls to update multiple device offsets simultaneously.
+        While this doesn't reduce the total number of API calls, it updates all devices
+        during a single coordinator refresh cycle.
+        
+        Args:
+            offsets: Dictionary mapping device serial numbers to offset values
+                    e.g., {"serial1": 2.5, "serial2": -1.0}
+        
+        Returns:
+            Dictionary mapping device serial numbers to status ("success" or error message)
+        """
+        if not self._home_id:
+            raise TadoXApiError("Home ID not set")
+
+        results: dict[str, str] = {}
+        
+        async def set_single_offset(serial: str, offset: float) -> tuple[str, str]:
+            """Set offset for a single device and return result."""
+            try:
+                await self._request(
+                    "PATCH",
+                    f"{TADO_HOPS_API_URL}/homes/{self._home_id}/roomsAndDevices/devices/{serial}",
+                    json_data={"temperatureOffset": offset},
+                )
+                return (serial, "success")
+            except Exception as err:
+                _LOGGER.error("Failed to set offset for device %s: %s", serial, err)
+                return (serial, f"error: {err}")
+
+        # Execute all offset updates in parallel
+        tasks = [set_single_offset(serial, offset) for serial, offset in offsets.items()]
+        task_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Build results dictionary
+        for result in task_results:
+            if isinstance(result, tuple):
+                serial, status = result
+                results[serial] = status
+            elif isinstance(result, Exception):
+                _LOGGER.error("Task failed with exception: %s", result)
+        
+        return results

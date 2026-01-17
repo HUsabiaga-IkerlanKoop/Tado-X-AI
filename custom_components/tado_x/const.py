@@ -24,6 +24,14 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_GEOFENCING_ENABLED: Final = "geofencing_enabled"
 CONF_MIN_TEMP: Final = "min_temp"
 CONF_MAX_TEMP: Final = "max_temp"
+CONF_AUTO_OFFSET_SYNC: Final = "auto_offset_sync"
+CONF_ROOMS: Final = "rooms"
+CONF_OFFSET_ENTITY: Final = "offset_entity"
+CONF_TEMPERATURE_SENSOR: Final = "temperature_sensor"
+CONF_OFFSET_HYSTERESIS: Final = "offset_hysteresis"
+
+# Default offset sync settings
+DEFAULT_OFFSET_HYSTERESIS: Final = 0.5  # degrees
 
 # Update intervals
 DEFAULT_SCAN_INTERVAL: Final = 860  # seconds (14.3 minutes)

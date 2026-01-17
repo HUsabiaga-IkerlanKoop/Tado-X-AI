@@ -1,0 +1,11 @@
+batch_update_temperature_offsets:
+  name: Batch Update Temperature Offsets
+  description: Update temperature offsets for multiple devices in a single operation. All updates are executed in parallel within one API call cycle.
+  fields:
+    offsets:
+      name: Device Offsets
+      description: Dictionary mapping device serial numbers to offset values (in Celsius, range -9.9 to 9.9)
+      required: true
+      example: '{"RU01234567890": 2.5, "RU09876543210": -1.0}'
+      selector:
+        object:
