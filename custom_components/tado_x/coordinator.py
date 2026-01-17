@@ -324,7 +324,7 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                 data.devices[device.serial_number] = device
 
             # Auto-sync temperature offsets if enabled
-            if self.auto_offset_sync and self.offset_mappings:
+            if self.auto_offset_sync and self.room_configs:
                 await self._auto_sync_temperature_offsets(data)
 
             return data
