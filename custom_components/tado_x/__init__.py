@@ -130,17 +130,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create coordinator
     coordinator = TadoXDataUpdateCoordinator(
-        hass=hass,auto_offset_sync,
-        room_configs=room_configs,
-        offset_hysteresis=offset_hysteresis
+        hass=hass,
+        api=api,
+        home_id=home_id,
         home_name=home_name,
         scan_interval=scan_interval,
         geofencing_enabled=entry.data.get(CONF_GEOFENCING_ENABLED, False),
         min_temp=entry.data.get(CONF_MIN_TEMP),
         max_temp=entry.data.get(CONF_MAX_TEMP),
-        auto_offset_sync=entry.data.get(CONF_AUTO_OFFSET_SYNC, False),
-        offset_mappings=entry.data.get(CONF_OFFSET_MAPPINGS, {}),
-        offset_hysteresis=entry.data.get(CONF_OFFSET_HYSTERESIS, DEFAULT_OFFSET_HYSTERESIS),
+        auto_offset_sync=auto_offset_sync,
+        room_configs=room_configs,
+        offset_hysteresis=offset_hysteresis,
     )
 
     # Fetch initial data
