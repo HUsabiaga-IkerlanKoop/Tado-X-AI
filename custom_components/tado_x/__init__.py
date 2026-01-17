@@ -26,6 +26,8 @@ from .const import (
     CONF_MAX_TEMP,
     CONF_AUTO_OFFSET_SYNC,
     CONF_ROOMS,
+    CONF_OFFSET_ENTITY,
+    CONF_TEMPERATURE_SENSOR,
     CONF_OFFSET_HYSTERESIS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_OFFSET_HYSTERESIS,
@@ -42,6 +44,19 @@ CONFIG_SCHEMA = vol.Schema(
             {
                 vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
                     cv.positive_int, vol.Range(min=30, max=3600)
+                ),
+                vol.Optional(CONF_AUTO_OFFSET_SYNC, default=False): cv.boolean,
+                vol.Optional(CONF_OFFSET_HYSTERESIS, default=DEFAULT_OFFSET_HYSTERESIS): vol.Coerce(float),
+                vol.Optional(CONF_ROOMS, default=[]): vol.All(
+                    cv.ensure_list,
+                    [
+                        vol.Schema(
+                            {
+                                vol.Required(CONF_OFFSET_ENTITY): cv.entity_id,
+                                vol.Required(CONF_TEMPERATURE_SENSOR): cv.entity_id,
+                            }
+                        )
+                    ],
                 ),
             }
         )

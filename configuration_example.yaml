@@ -34,6 +34,15 @@ tado_x:
     - offset_entity: number.logela_2_va04_temperature_offset
       temperature_sensor: sensor.air_quality_logela_2_temperature
 
+    # Komuna 2
+    - offset_entity: number.komuna_2_radiator_valve_temperature_offset
+      temperature_sensor: sensor.temp_hum_komuna_2_temperature
+
+    # Pasiloa
+    - offset_entity: number.pasiloa_radiator_valve_temperature_offset # ondo dago nahiz eta hori erakutsi lehen komuna 1 zen eta
+      temperature_sensor: sensor.temp_hum_komuna_1_temperature
+
+  
 # HOW TO FIND ENTITY IDs:
 #
 # 1. Go to Settings → Devices & Services → Entities
