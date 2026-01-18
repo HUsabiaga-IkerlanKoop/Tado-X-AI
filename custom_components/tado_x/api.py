@@ -185,7 +185,7 @@ class TadoXApi:
         except aiohttp.ClientError as err:
             raise TadoXAuthError(f"Network error during token refresh: {err}") from err
 
-    async def _ensure_valid_token(self) -> None:
+    async def ensure_valid_token(self) -> None:
         """Ensure we have a valid access token."""
         if not self._access_token:
             raise TadoXAuthError("Not authenticated")
@@ -201,7 +201,7 @@ class TadoXApi:
         json_data: dict | None = None,
     ) -> dict | list | None:
         """Make an authenticated API request."""
-        await self._ensure_valid_token()
+        await self.ensure_valid_token()
 
         headers = {
             "Authorization": f"Bearer {self._access_token}",

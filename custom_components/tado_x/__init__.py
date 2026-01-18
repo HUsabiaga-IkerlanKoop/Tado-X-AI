@@ -99,20 +99,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     home_id = entry.data[CONF_HOME_ID]
     home_name = entry.data.get(CONF_HOME_NAME, f"Tado Home {home_id}")
 
-    # Test the connection and refresh token if needed
+    # Ensure token is valid (refresh if needed)
     try:
-        await api.refresh_access_token()
+        old_access_token = api.access_token
+        old_expiry = api.token_expiry
+        
+        await api.ensure_valid_token()
 
-        # Update stored tokens
-        hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                CONF_ACCESS_TOKEN: api.access_token,
-                CONF_REFRESH_TOKEN: api.refresh_token,
-                CONF_TOKEN_EXPIRY: api.token_expiry.isoformat() if api.token_expiry else None,
-            },
-        )
+        # Update stored tokens ONLY if changed
+        if api.access_token != old_access_token or api.token_expiry != old_expiry:
+            _LOGGER.debug("Token refreshed during setup, updating config entry")
+            hass.config_entries.async_update_entry(
+                entry,
+                data={
+                    **entry.data,
+                    CONF_ACCESS_TOKEN: api.access_token,
+                    CONF_REFRESH_TOKEN: api.refresh_token,
+                    CONF_TOKEN_EXPIRY: api.token_expiry.isoformat() if api.token_expiry else None,
+                },
+            )
     except TadoXAuthError as err:
         _LOGGER.error("Authentication failed: %s", err)
         raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
