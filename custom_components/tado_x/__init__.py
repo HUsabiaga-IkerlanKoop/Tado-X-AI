@@ -235,6 +235,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         _LOGGER.info("Registered batch_update_temperature_offsets service")
 
+    # Store options for comparison in update listener
+    hass.data[DOMAIN][entry.entry_id].last_options = entry.options.copy()
+
     return True
 
 
@@ -254,5 +257,12 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options."""
+    # Check if options actually changed
+    coordinator = hass.data[DOMAIN].get(entry.entry_id)
+    if coordinator and hasattr(coordinator, "last_options"):
+        if coordinator.last_options == entry.options:
+            _LOGGER.debug("Options have not changed, ignoring update (probably data/token update)")
+            return
+
     await hass.config_entries.async_reload(entry.entry_id)
 

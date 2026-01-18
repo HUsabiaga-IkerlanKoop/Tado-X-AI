@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -179,7 +179,8 @@ class TadoXApi:
                 self._access_token = data["access_token"]
                 self._refresh_token = data.get("refresh_token", self._refresh_token)
                 expires_in = data.get("expires_in", 600)
-                self._token_expiry = datetime.now() + timedelta(seconds=expires_in)
+                # Use UTC for expiry to avoid timezone issues
+                self._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
                 return True
 
         except aiohttp.ClientError as err:
@@ -191,8 +192,18 @@ class TadoXApi:
             raise TadoXAuthError("Not authenticated")
 
         # Refresh if token expires in less than 60 seconds
-        if self._token_expiry and datetime.now() >= self._token_expiry - timedelta(seconds=60):
-            await self.refresh_access_token()
+        # Use UTC for comparison if we have expiry
+        if self._token_expiry:
+            now = datetime.now(timezone.utc)
+            # Handle naive datetime if it was loaded from storage without timezone
+            if self._token_expiry.tzinfo is None:
+                # Assume standard datetime.now() (system local) was used before
+                # Convert system local 'now' to aware UTC is complex without libs
+                # Fallback: compare with naive now
+                now = datetime.now()
+            
+            if now >= self._token_expiry - timedelta(seconds=60):
+                await self.refresh_access_token()
 
     async def _request(
         self,
