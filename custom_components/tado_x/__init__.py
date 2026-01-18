@@ -45,6 +45,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
                     cv.positive_int, vol.Range(min=30, max=3600)
                 ),
+                vol.Optional(CONF_GEOFENCING_ENABLED, default=False): cv.boolean,
                 vol.Optional(CONF_AUTO_OFFSET_SYNC, default=False): cv.boolean,
                 vol.Optional(CONF_OFFSET_HYSTERESIS, default=DEFAULT_OFFSET_HYSTERESIS): vol.Coerce(float),
                 vol.Optional(CONF_ROOMS, default=[]): vol.All(
@@ -116,11 +117,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Authentication failed: %s", err)
         raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
 
-    # Get scan interval - YAML config overrides stored value
+    # Get scan interval - YAML config overrides stored value and options
     yaml_config = hass.data[DOMAIN].get("yaml_config", {})
     scan_interval = yaml_config.get(
         CONF_SCAN_INTERVAL,
-        entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        entry.options.get(
+            CONF_SCAN_INTERVAL,
+            entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
     )
     _LOGGER.info("Using scan interval: %s seconds", scan_interval)
     
@@ -128,6 +132,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     auto_offset_sync = yaml_config.get(CONF_AUTO_OFFSET_SYNC, False)
     room_configs = yaml_config.get(CONF_ROOMS, [])
     offset_hysteresis = yaml_config.get(CONF_OFFSET_HYSTERESIS, DEFAULT_OFFSET_HYSTERESIS)
+    
+    # Get geofencing configuration - YAML config overrides stored value and options
+    geofencing_enabled = yaml_config.get(
+        CONF_GEOFENCING_ENABLED,
+        entry.options.get(
+            CONF_GEOFENCING_ENABLED,
+            entry.data.get(CONF_GEOFENCING_ENABLED, False)
+        )
+    )
     
     if auto_offset_sync and room_configs:
         _LOGGER.info("Auto offset sync enabled with %d room configurations", len(room_configs))
@@ -150,9 +163,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         home_id=home_id,
         home_name=home_name,
         scan_interval=scan_interval,
-        geofencing_enabled=entry.data.get(CONF_GEOFENCING_ENABLED, False),
-        min_temp=entry.data.get(CONF_MIN_TEMP),
-        max_temp=entry.data.get(CONF_MAX_TEMP),
+        geofencing_enabled=geofencing_enabled,
+        min_temp=entry.options.get(
+            CONF_MIN_TEMP,
+            entry.data.get(CONF_MIN_TEMP)
+        ),
+        max_temp=entry.options.get(
+            CONF_MAX_TEMP,
+            entry.data.get(CONF_MAX_TEMP)
+        ),
         auto_offset_sync=auto_offset_sync,
         room_configs=room_configs,
         offset_hysteresis=offset_hysteresis,
@@ -168,6 +187,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register update listener
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     # Register batch offset update service
     async def async_batch_update_offsets(call: ServiceCall) -> None:
@@ -223,3 +245,9 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update options."""
+    await hass.config_entries.async_reload(entry.entry_id)
+

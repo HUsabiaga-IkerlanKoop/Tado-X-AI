@@ -8,7 +8,8 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -46,6 +47,14 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
         self._poll_task: asyncio.Task | None = None
         self._homes: list[dict[str, Any]] = []
         self._selected_home: dict[str, Any] | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> TadoXOptionsFlowHandler:
+        """Get the options flow for this handler."""
+        return TadoXOptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -301,4 +310,55 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
                 "user_code": self._user_code or "",
                 "verification_uri": self._verification_uri or "",
             },
+        )
+
+
+class TadoXOptionsFlowHandler(OptionsFlow):
+    """Handle Tado X options."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=self.config_entry.options.get(
+                            CONF_SCAN_INTERVAL,
+                            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
+                    vol.Optional(
+                        CONF_GEOFENCING_ENABLED,
+                        default=self.config_entry.options.get(
+                            CONF_GEOFENCING_ENABLED,
+                            self.config_entry.data.get(CONF_GEOFENCING_ENABLED, False),
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_MIN_TEMP,
+                        default=self.config_entry.options.get(
+                            CONF_MIN_TEMP,
+                            self.config_entry.data.get(CONF_MIN_TEMP, MIN_TEMP),
+                        ),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=MIN_TEMP, max=MAX_TEMP)),
+                    vol.Optional(
+                        CONF_MAX_TEMP,
+                        default=self.config_entry.options.get(
+                            CONF_MAX_TEMP,
+                            self.config_entry.data.get(CONF_MAX_TEMP, MAX_TEMP),
+                        ),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=MIN_TEMP, max=MAX_TEMP)),
+                }
+            ),
         )
