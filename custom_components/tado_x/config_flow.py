@@ -47,6 +47,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
         self._poll_task: asyncio.Task | None = None
         self._homes: list[dict[str, Any]] = []
         self._selected_home: dict[str, Any] | None = None
+        self._reauth_entry: ConfigEntry | None = None
 
     @staticmethod
     @callback
@@ -239,6 +240,9 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
         self, entry_data: dict[str, Any]
     ) -> FlowResult:
         """Handle reauthorization."""
+        # Store entry for later update/abort
+        if entry_id := self.context.get("entry_id"):
+            self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -285,7 +289,10 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                     if success:
                         # Update the existing entry
-                        reauth_entry = self._get_reauth_entry()
+                        reauth_entry = self._reauth_entry
+                        if not reauth_entry:
+                            return self.async_abort(reason="reauth_failed")
+
                         return self.async_update_reload_and_abort(
                             reauth_entry,
                             data={
