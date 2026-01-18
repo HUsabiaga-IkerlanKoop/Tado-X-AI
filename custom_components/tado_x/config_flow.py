@@ -53,7 +53,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: ConfigEntry,
-    ) -> TadoXOptionsFlowHandler:
+    ) -> OptionsFlow:
         """Get the options flow for this handler."""
         return TadoXOptionsFlowHandler(config_entry)
 
@@ -325,6 +325,7 @@ class TadoXOptionsFlowHandler(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
+        super().__init__()
         self.config_entry = config_entry
 
     async def async_step_init(
