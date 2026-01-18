@@ -224,7 +224,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if status != "success":
                 _LOGGER.error("Failed to update offset for device %s: %s", device_serial, status)
 
-    # Register the service only once (for the first entry)
+    # Register set presence service
+    async def async_set_presence(call: ServiceCall) -> None:
+        """Handle set presence service call."""
+        presence = call.data.get("presence")
+        
+        if presence not in ("HOME", "AWAY"):
+            _LOGGER.error("Invalid presence value: %s", presence)
+            return
+        
+        _LOGGER.info("Setting home presence to: %s", presence)
+        await coordinator.api.set_presence(presence)
+        await coordinator.async_request_refresh()
+
+    # Register services only once (for the first entry)
     if not hass.services.has_service(DOMAIN, "batch_update_temperature_offsets"):
         hass.services.async_register(
             DOMAIN,
@@ -237,6 +250,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }),
         )
         _LOGGER.info("Registered batch_update_temperature_offsets service")
+
+    if not hass.services.has_service(DOMAIN, "set_presence"):
+        hass.services.async_register(
+            DOMAIN,
+            "set_presence",
+            async_set_presence,
+            schema=vol.Schema({
+                vol.Required("presence"): vol.In(["HOME", "AWAY"])
+            }),
+        )
+        _LOGGER.info("Registered set_presence service")
 
     return True
 

@@ -9,3 +9,18 @@ batch_update_temperature_offsets:
       example: '{"RU01234567890": 2.5, "RU09876543210": -1.0}'
       selector:
         object:
+
+set_presence:
+  name: Set Home Presence
+  description: Manually set the home presence state (HOME or AWAY) for geofencing control.
+  fields:
+    presence:
+      name: Presence
+      description: The presence state to set
+      required: true
+      example: "HOME"
+      selector:
+        select:
+          options:
+            - "HOME"
+            - "AWAY"

@@ -384,7 +384,21 @@ class TadoXApi:
                 "POST",
                 f"{TADO_HOPS_API_URL}/homes/{self._home_id}/quickActions/boost",
             )
+    async def set_room_boost(self, room_id: int, enabled: bool) -> None:
+        """Enable or disable boost mode for a room."""
+        if not self._home_id:
+            raise TadoXApiError("Home ID not set")
 
+        if enabled:
+            await self._request(
+                "POST",
+                f"{TADO_HOPS_API_URL}/homes/{self._home_id}/rooms/{room_id}/boost",
+            )
+        else:
+            await self._request(
+                "DELETE",
+                f"{TADO_HOPS_API_URL}/homes/{self._home_id}/rooms/{room_id}/boost",
+            )
     async def resume_all_schedules(self) -> None:
         """Resume schedule for all rooms."""
         if not self._home_id:
@@ -420,6 +434,17 @@ class TadoXApi:
             "PATCH",
             f"{TADO_HOPS_API_URL}/homes/{self._home_id}/roomsAndDevices/devices/{device_serial}",
             json_data={"temperatureOffset": offset},
+        )
+
+    async def set_device_child_lock(self, device_serial: str, enabled: bool) -> None:
+        """Enable or disable child lock for a device (VA04 or TR04)."""
+        if not self._home_id:
+            raise TadoXApiError("Home ID not set")
+
+        await self._request(
+            "PATCH",
+            f"{TADO_HOPS_API_URL}/homes/{self._home_id}/roomsAndDevices/devices/{device_serial}",
+            json_data={"childLockEnabled": enabled},
         )
 
     async def set_multiple_device_temperature_offsets(

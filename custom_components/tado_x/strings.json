@@ -65,6 +65,9 @@
       },
       "device_temperature": {
         "name": "Device Temperature"
+      },
+      "device_temperature_corrected": {
+        "name": "Device Temperature (Corrected)"
       }
     },
     "binary_sensor": {
@@ -87,6 +90,14 @@
     "number": {
       "temperature_offset": {
         "name": "Temperature Offset"
+      }
+    },
+    "switch": {
+      "boost_mode": {
+        "name": "Boost Mode"
+      },
+      "child_lock": {
+        "name": "Child Lock"
       }
     }
   }

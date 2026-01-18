@@ -308,6 +308,29 @@ class TadoXDeviceSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], SensorEnt
             return None
         return self.entity_description.value_fn(device)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        device = self._device
+        if not device:
+            return {}
+
+        attrs = {
+            "firmware_version": device.firmware_version,
+            "connection_state": device.connection_state,
+        }
+
+        if device.mounting_state:
+            attrs["mounting_state"] = device.mounting_state
+
+        if device.temperature_offset != 0:
+            attrs["temperature_offset"] = device.temperature_offset
+
+        if device.child_lock_enabled:
+            attrs["child_lock_enabled"] = True
+
+        return attrs
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""

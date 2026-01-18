@@ -69,4 +69,4 @@ MAX_OFFSET: Final = 9.9
 OFFSET_STEP: Final = 0.1
 
 # Platforms
-PLATFORMS: Final = ["climate", "sensor", "binary_sensor", "number"]
+PLATFORMS: Final = ["climate", "sensor", "binary_sensor", "number", "switch"]

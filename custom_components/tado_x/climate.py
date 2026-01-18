@@ -209,6 +209,13 @@ class TadoXClimate(CoordinatorEntity[TadoXDataUpdateCoordinator], ClimateEntity)
         if room.open_window_detected:
             attrs["open_window_detected"] = True
 
+        # Add device information (firmware, count)
+        if room.devices:
+            attrs["device_count"] = len(room.devices)
+            firmware_versions = {d.firmware_version for d in room.devices if d.firmware_version}
+            if firmware_versions:
+                attrs["firmware_versions"] = list(firmware_versions)
+
         return attrs
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
