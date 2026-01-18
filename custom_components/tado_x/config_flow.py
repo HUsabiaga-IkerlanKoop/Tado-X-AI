@@ -55,7 +55,9 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Get the options flow for this handler."""
-        return TadoXOptionsFlowHandler(config_entry)
+        # Home Assistant will inject config_entry into the OptionsFlow instance.
+        # Do not set it ourselves (config_entry is a read-only property).
+        return TadoXOptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -164,6 +166,8 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle configuration of polling rate."""
         if user_input is not None:
+            if not self._selected_home:
+                return self.async_abort(reason="unknown")
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             geofencing_enabled = user_input.get(CONF_GEOFENCING_ENABLED, False)
             min_temp = user_input.get(CONF_MIN_TEMP, MIN_TEMP)
@@ -322,11 +326,6 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class TadoXOptionsFlowHandler(OptionsFlow):
     """Handle Tado X options."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        super().__init__()
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

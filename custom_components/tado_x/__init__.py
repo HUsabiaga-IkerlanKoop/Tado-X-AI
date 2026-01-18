@@ -191,6 +191,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    # Store options immediately to avoid update-listener reload loops during startup
+    coordinator.last_options = entry.options.copy()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register update listener
@@ -235,9 +238,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         _LOGGER.info("Registered batch_update_temperature_offsets service")
 
-    # Store options for comparison in update listener
-    hass.data[DOMAIN][entry.entry_id].last_options = entry.options.copy()
-
     return True
 
 
@@ -258,11 +258,21 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options."""
     # Check if options actually changed
-    coordinator = hass.data[DOMAIN].get(entry.entry_id)
-    if coordinator and hasattr(coordinator, "last_options"):
-        if coordinator.last_options == entry.options:
-            _LOGGER.debug("Options have not changed, ignoring update (probably data/token update)")
-            return
+    if DOMAIN not in hass.data or entry.entry_id not in hass.data[DOMAIN]:
+        # Integration not fully set up; ignore to avoid reload loops
+        _LOGGER.debug("Options update received before coordinator is ready; ignoring")
+        return
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    last_options = getattr(coordinator, "last_options", None)
+    if last_options is None:
+        # Startup edge-case; ignore to avoid reload loops
+        _LOGGER.debug("Options update received before last_options is set; ignoring")
+        return
+
+    if last_options == entry.options:
+        _LOGGER.debug("Options have not changed; ignoring update")
+        return
 
     await hass.config_entries.async_reload(entry.entry_id)
 
