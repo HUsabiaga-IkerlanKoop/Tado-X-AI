@@ -312,6 +312,9 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                     device_type=device_type,
                     firmware_version=device_data.get("firmwareVersion", ""),
                     connection_state=other_device_connection.get("state", "DISCONNECTED"),
+                    battery_state=device_data.get("batteryState"),
+                    temperature_measured=device_data.get("temperatureAsMeasured"),
+                    temperature_offset=device_data.get("temperatureOffset", 0.0),
                     room_id=other_room_id,
                     room_name=other_room_name,
                 )

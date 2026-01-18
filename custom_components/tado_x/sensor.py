@@ -83,6 +83,14 @@ DEVICE_SENSORS: tuple[TadoXDeviceSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda device: device.temperature_measured,
     ),
+    TadoXDeviceSensorEntityDescription(
+        key="device_temperature_corrected",
+        translation_key="device_temperature_corrected",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda device: round(device.temperature_measured + device.temperature_offset, 1) if device.temperature_measured is not None else None,
+    ),
 )
 
 
@@ -104,14 +112,16 @@ async def async_setup_entry(
         for description in ROOM_SENSORS:
             entities.append(TadoXRoomSensor(coordinator, room_id, description))
 
-    # Add device sensors (for devices with batteries - valves and sensors)
+    # Add device sensors
     for device in coordinator.data.devices.values():
-        if device.battery_state:  # Only devices with batteries
-            for description in DEVICE_SENSORS:
-                # Skip device temperature for sensors that don't have it
-                if description.key == "device_temperature" and device.temperature_measured is None:
-                    continue
-                entities.append(TadoXDeviceSensor(coordinator, device.serial_number, description))
+        for description in DEVICE_SENSORS:
+            # Skip battery sensor if device has no battery
+            if description.key == "battery" and device.battery_state is None:
+                continue
+            # Skip temperature sensors if measurement not available
+            if description.key in ("device_temperature", "device_temperature_corrected") and device.temperature_measured is None:
+                continue
+            entities.append(TadoXDeviceSensor(coordinator, device.serial_number, description))
 
     async_add_entities(entities)
 
