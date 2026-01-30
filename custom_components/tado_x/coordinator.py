@@ -149,10 +149,12 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             if len(devices_home) > 0 and presence == "AWAY":
                 # Devices are home, but home is in AWAY mode: set HOME
                 await self.api.set_presence("HOME")
+                presence = "HOME"  # Update presence to reflect the change
                 _LOGGER.info("Geofencing: Devices at home, switching to HOME mode.")
             elif len(devices_home) == 0 and presence == "HOME":
                 # No devices at home, but home is in HOME mode: set AWAY
                 await self.api.set_presence("AWAY")
+                presence = "AWAY"  # Update presence to reflect the change
                 _LOGGER.info("Geofencing: No devices at home, switching to AWAY mode.")
             return presence
         except Exception as e:
@@ -166,9 +168,11 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             home_state = await self.api.get_home_state()
             presence = home_state.get("presence")
 
-            # Run geofencing check if enabled
+            # Run geofencing check if enabled and update presence with result
             if self.geofencing_enabled:
-                await self.async_geofencing_check(home_state)
+                updated_presence = await self.async_geofencing_check(home_state)
+                if updated_presence is not None:
+                    presence = updated_presence
             # Get rooms with current state
             rooms_data = await self.api.get_rooms()
 

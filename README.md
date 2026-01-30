@@ -231,10 +231,24 @@ tado_x:
 4. Consider Tado Auto-Assist subscription
 
 ### Geofencing Not Working
-- Ensure mobile devices have geotracking enabled in Tado app
-- Check sensor entity `sensor.tado_x_home_geofencing_presence` for current state
-- Verify `geofencing_enabled: true` in configuration
-- Check logs for geofencing check errors
+1. **Enable geofencing:**
+   - Verify `geofencing_enabled: true` in YAML configuration, or
+   - Enable via Settings → Devices & Services → Tado X → Configure
+2. **Check mobile device settings:**
+   - Ensure mobile devices have geotracking enabled in the Tado app
+   - Open Tado mobile app → Settings → Geofencing → Enable for each device
+3. **Monitor the presence sensor:**
+   - Check `sensor.tado_x_home_geofencing_presence` entity state
+   - Should show "HOME", "AWAY", or "UNKNOWN"
+   - State updates every scan interval (default: 14.3 minutes)
+4. **Check logs for errors:**
+   - Search for "Geofencing" in Home Assistant logs
+   - Look for messages like "Devices at home, switching to HOME mode"
+   - If you see "Geofencing check failed", there may be an API issue
+5. **Common issues:**
+   - **Sensor shows old state:** Fixed in latest version - update the integration
+   - **No automatic switching:** Verify at least one mobile device has `geoTrackingEnabled: true` in Tado app
+   - **Delayed response:** Normal - geofencing checks every scan_interval seconds
 
 ### Offset Sync Not Working
 - Verify `auto_offset_sync: true` in YAML configuration
@@ -334,6 +348,7 @@ custom_components/tado_x/
 - Fixed integration reload loops on startup
 - Fixed device temperature sensors not appearing for all device types
 - Improved token refresh logic to prevent unnecessary refreshes
+- **Fixed geofencing not updating sensor state automatically** - The presence sensor now correctly reflects the updated state after automatic HOME/AWAY switching
 
 **API Improvements:**
 - Added `set_room_boost()` for boost mode control
