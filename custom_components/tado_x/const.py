@@ -29,6 +29,14 @@ CONF_ROOMS: Final = "rooms"
 CONF_OFFSET_ENTITY: Final = "offset_entity"
 CONF_TEMPERATURE_SENSOR: Final = "temperature_sensor"
 CONF_OFFSET_HYSTERESIS: Final = "offset_hysteresis"
+CONF_PRESENCE_ENTITIES: Final = "presence_entities"
+CONF_GEOFENCING_SOURCE: Final = "geofencing_source"
+
+# Geofencing source values
+GEOFENCING_SOURCE_OFF: Final = "off"
+GEOFENCING_SOURCE_TADO: Final = "tado"
+GEOFENCING_SOURCE_HA: Final = "ha"
+GEOFENCING_SOURCES: Final = (GEOFENCING_SOURCE_OFF, GEOFENCING_SOURCE_TADO, GEOFENCING_SOURCE_HA)
 
 # Default offset sync settings
 DEFAULT_OFFSET_HYSTERESIS: Final = 0.5  # degrees

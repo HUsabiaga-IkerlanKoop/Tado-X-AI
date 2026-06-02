@@ -29,6 +29,11 @@ from .const import (
     CONF_OFFSET_ENTITY,
     CONF_TEMPERATURE_SENSOR,
     CONF_OFFSET_HYSTERESIS,
+    CONF_PRESENCE_ENTITIES,
+    CONF_GEOFENCING_SOURCE,
+    GEOFENCING_SOURCE_HA,
+    GEOFENCING_SOURCE_OFF,
+    GEOFENCING_SOURCE_TADO,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_OFFSET_HYSTERESIS,
     DOMAIN,
@@ -146,6 +151,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.data.get(CONF_GEOFENCING_ENABLED, False)
         )
     )
+
+    # HA presence entities (person/device_tracker/zone) used when source = 'ha'.
+    presence_entities = entry.options.get(
+        CONF_PRESENCE_ENTITIES,
+        entry.data.get(CONF_PRESENCE_ENTITIES, []),
+    ) or []
+
+    # Resolve geofencing source. Falls back to legacy ``geofencing_enabled``
+    # so existing configurations keep working: enabled + entities -> HA,
+    # enabled without entities -> Tado, disabled -> off.
+    legacy_source = (
+        GEOFENCING_SOURCE_HA if (geofencing_enabled and presence_entities)
+        else GEOFENCING_SOURCE_TADO if geofencing_enabled
+        else GEOFENCING_SOURCE_OFF
+    )
+    geofencing_source = entry.options.get(
+        CONF_GEOFENCING_SOURCE,
+        entry.data.get(CONF_GEOFENCING_SOURCE, legacy_source),
+    )
+    geofencing_enabled = geofencing_source != GEOFENCING_SOURCE_OFF
+    _LOGGER.info("Geofencing source: %s", geofencing_source)
     
     if auto_offset_sync and room_configs:
         _LOGGER.info("Auto offset sync enabled with %d room configurations", len(room_configs))
@@ -180,6 +206,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         auto_offset_sync=auto_offset_sync,
         room_configs=room_configs,
         offset_hysteresis=offset_hysteresis,
+        presence_entities=presence_entities,
+        geofencing_source=geofencing_source,
     )
 
     # Fetch initial data
@@ -195,6 +223,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.last_options = entry.options.copy()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Subscribe to HA presence entity changes for immediate HOME/AWAY switching
+    if (presence_unsub := coordinator.async_setup_presence_listener()) is not None:
+        entry.async_on_unload(presence_unsub)
+
+    # When geofencing is turned off, release any presence lock we may have set
+    # previously so Tado's own geofencing takes back control.
+    if geofencing_source == GEOFENCING_SOURCE_OFF:
+        try:
+            await coordinator.api.set_presence("AUTO")
+            _LOGGER.info("Released Tado presence lock (source=off)")
+        except TadoXApiError as err:
+            _LOGGER.debug("Could not release presence lock (likely none active): %s", err)
 
     # Register update listener
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -228,11 +269,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_set_presence(call: ServiceCall) -> None:
         """Handle set presence service call."""
         presence = call.data.get("presence")
-        
-        if presence not in ("HOME", "AWAY"):
+
+        if presence not in ("HOME", "AWAY", "AUTO"):
             _LOGGER.error("Invalid presence value: %s", presence)
             return
-        
+
         _LOGGER.info("Setting home presence to: %s", presence)
         await coordinator.api.set_presence(presence)
         await coordinator.async_request_refresh()
@@ -257,7 +298,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "set_presence",
             async_set_presence,
             schema=vol.Schema({
-                vol.Required("presence"): vol.In(["HOME", "AWAY"])
+                vol.Required("presence"): vol.In(["HOME", "AWAY", "AUTO"])
             }),
         )
         _LOGGER.info("Registered set_presence service")

@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import selector
 
 from .api import TadoXApi, TadoXAuthError
 from .const import (
@@ -24,6 +25,12 @@ from .const import (
     CONF_GEOFENCING_ENABLED,
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
+    CONF_PRESENCE_ENTITIES,
+    CONF_GEOFENCING_SOURCE,
+    GEOFENCING_SOURCE_HA,
+    GEOFENCING_SOURCE_OFF,
+    GEOFENCING_SOURCE_TADO,
+    GEOFENCING_SOURCES,
     MIN_TEMP,
     MAX_TEMP,
     DEFAULT_SCAN_INTERVAL,
@@ -353,6 +360,24 @@ class TadoXOptionsFlowHandler(OptionsFlow):
                         ),
                     ): bool,
                     vol.Optional(
+                        CONF_GEOFENCING_SOURCE,
+                        default=self.config_entry.options.get(
+                            CONF_GEOFENCING_SOURCE,
+                            self.config_entry.data.get(
+                                CONF_GEOFENCING_SOURCE, GEOFENCING_SOURCE_OFF
+                            ),
+                        ),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value=GEOFENCING_SOURCE_OFF, label="Off (use Tado app's own geofencing)"),
+                                selector.SelectOptionDict(value=GEOFENCING_SOURCE_TADO, label="Tado mobile devices"),
+                                selector.SelectOptionDict(value=GEOFENCING_SOURCE_HA, label="Home Assistant presence entities"),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(
                         CONF_MIN_TEMP,
                         default=self.config_entry.options.get(
                             CONF_MIN_TEMP,
@@ -366,6 +391,18 @@ class TadoXOptionsFlowHandler(OptionsFlow):
                             self.config_entry.data.get(CONF_MAX_TEMP, MAX_TEMP),
                         ),
                     ): vol.All(vol.Coerce(float), vol.Range(min=MIN_TEMP, max=MAX_TEMP)),
+                    vol.Optional(
+                        CONF_PRESENCE_ENTITIES,
+                        default=self.config_entry.options.get(
+                            CONF_PRESENCE_ENTITIES,
+                            self.config_entry.data.get(CONF_PRESENCE_ENTITIES, []),
+                        ),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain=["person", "device_tracker", "zone"],
+                            multiple=True,
+                        )
+                    ),
                 }
             ),
         )

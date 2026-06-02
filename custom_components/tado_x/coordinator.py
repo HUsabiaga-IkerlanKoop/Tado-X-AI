@@ -4,13 +4,21 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any
+from typing import Any, Callable
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import TadoXApi, TadoXApiError, TadoXAuthError
-from .const import DEFAULT_SCAN_INTERVAL, DEFAULT_OFFSET_HYSTERESIS, DOMAIN
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_OFFSET_HYSTERESIS,
+    DOMAIN,
+    GEOFENCING_SOURCE_HA,
+    GEOFENCING_SOURCE_OFF,
+    GEOFENCING_SOURCE_TADO,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +90,8 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         auto_offset_sync: bool = False,
         room_configs: list[dict[str, str]] | None = None,
         offset_hysteresis: float = DEFAULT_OFFSET_HYSTERESIS,
+        presence_entities: list[str] | None = None,
+        geofencing_source: str = GEOFENCING_SOURCE_OFF,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -94,19 +104,24 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         self.home_id = home_id
         self.home_name = home_name
         self.api.home_id = home_id
-        self.geofencing_enabled = geofencing_enabled
+        self.geofencing_source = geofencing_source
+        # Backwards-compat flag: True whenever any source is active
+        self.geofencing_enabled = geofencing_enabled and geofencing_source != GEOFENCING_SOURCE_OFF
         self.min_temp = min_temp
         self.max_temp = max_temp
         self.auto_offset_sync = auto_offset_sync
         self.room_configs = room_configs or []
         self.offset_hysteresis = offset_hysteresis
+        self.presence_entities: list[str] = presence_entities or []
         self._pending_offset_updates: dict[str, float] = {}
-        
+        self._presence_unsub: Callable[[], None] | None = None
+
         _LOGGER.info(
-            "TadoXDataUpdateCoordinator initialized - Home: %s (ID: %s), Geofencing: %s, Auto Offset Sync: %s",
+            "TadoXDataUpdateCoordinator initialized - Home: %s (ID: %s), Geofencing source: %s, HA Presence Entities: %s, Auto Offset Sync: %s",
             home_name,
             home_id,
-            geofencing_enabled,
+            self.geofencing_source,
+            self.presence_entities or "<none>",
             auto_offset_sync,
         )
 
@@ -133,11 +148,132 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         
         return results
 
-    async def async_geofencing_check(self, home_state: dict[str, Any] | None = None) -> str | None:
-        """Check geofencing status and set home/away mode as in tado_aa.
+    def _evaluate_ha_presence(self) -> tuple[bool, int, list[str]]:
+        """Evaluate presence from configured HA entities.
 
-        Returns the detected home presence (e.g., HOME/AWAY) when available.
+        Returns (any_home, known_count, devices_home_names). Unknown/unavailable
+        states are ignored so a temporarily missing tracker does not force AWAY.
         """
+        any_home = False
+        known = 0
+        names: list[str] = []
+        for entity_id in self.presence_entities:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in ("unknown", "unavailable", None):
+                continue
+            known += 1
+            value = state.state
+            at_home = False
+            if entity_id.startswith("zone."):
+                # zone state is the count of trackers in the zone
+                try:
+                    at_home = int(value) > 0
+                except (TypeError, ValueError):
+                    at_home = False
+            else:
+                at_home = value in ("home", "on")
+            if at_home:
+                any_home = True
+                names.append(state.attributes.get("friendly_name") or entity_id)
+        return any_home, known, names
+
+    async def _apply_presence_decision(
+        self, any_home: bool, known: int, devices_home: list[str], current_presence: str | None
+    ) -> str | None:
+        """Apply HOME/AWAY decision against current Tado presence."""
+        if known == 0:
+            _LOGGER.debug("HA presence: no known trackers, leaving presence unchanged")
+            return current_presence
+        if any_home and current_presence != "HOME":
+            _LOGGER.info("HA presence: %s at home, switching Tado to HOME", devices_home)
+            await self.api.set_presence("HOME")
+            return "HOME"
+        if not any_home and current_presence != "AWAY":
+            _LOGGER.info("HA presence: nobody home, switching Tado to AWAY")
+            await self.api.set_presence("AWAY")
+            return "AWAY"
+        _LOGGER.debug(
+            "HA presence: no change needed (Tado=%s, any_home=%s)",
+            current_presence,
+            any_home,
+        )
+        return current_presence
+
+    async def async_ha_presence_check(self, home_state: dict[str, Any] | None = None) -> str | None:
+        """Evaluate HA presence entities and sync Tado presence accordingly."""
+        try:
+            if home_state is None:
+                home_state = await self.api.get_home_state()
+            current = home_state.get("presence")
+            any_home, known, names = self._evaluate_ha_presence()
+            return await self._apply_presence_decision(any_home, known, names, current)
+        except Exception as err:  # noqa: BLE001 - log + degrade gracefully
+            _LOGGER.error("HA presence check failed: %s", err, exc_info=True)
+            return home_state.get("presence") if home_state else None
+
+    @callback
+    def async_setup_presence_listener(self) -> Callable[[], None] | None:
+        """Subscribe to state changes of configured HA presence entities.
+
+        Returns an unsubscribe callable, or None if there is nothing to listen to.
+        """
+        # Tear down any previous listener (e.g. after options reload)
+        if self._presence_unsub is not None:
+            self._presence_unsub()
+            self._presence_unsub = None
+
+        if not (self.geofencing_enabled and self.presence_entities):
+            return None
+
+        if self.geofencing_source != GEOFENCING_SOURCE_HA:
+            return None
+
+        @callback
+        def _handle_state_change(event: Event) -> None:
+            new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            new_val = new_state.state if new_state else None
+            old_val = old_state.state if old_state else None
+            if new_val == old_val:
+                return
+            _LOGGER.debug(
+                "Presence entity %s changed %s -> %s; re-evaluating",
+                event.data.get("entity_id"),
+                old_val,
+                new_val,
+            )
+            self.hass.async_create_task(self._async_presence_event_handler())
+
+        self._presence_unsub = async_track_state_change_event(
+            self.hass, self.presence_entities, _handle_state_change
+        )
+        _LOGGER.info(
+            "Subscribed to %d HA presence entity state changes",
+            len(self.presence_entities),
+        )
+        return self._presence_unsub
+
+    async def _async_presence_event_handler(self) -> None:
+        """Apply presence decision and refresh coordinator on tracker changes."""
+        new_presence = await self.async_ha_presence_check()
+        # Reflect the change in coordinator data without waiting for next poll
+        if self.data is not None and new_presence is not None and new_presence != self.data.presence:
+            self.data.presence = new_presence
+            self.async_update_listeners()
+
+    async def async_geofencing_check(self, home_state: dict[str, Any] | None = None) -> str | None:
+        """Check geofencing status and set home/away mode.
+
+        Branches on ``geofencing_source``:
+        - ``ha``  : use configured HA presence entities as source of truth.
+        - ``tado``: poll Tado mobile devices (legacy behavior).
+        - ``off`` : do nothing.
+        """
+        if self.geofencing_source == GEOFENCING_SOURCE_OFF:
+            return home_state.get("presence") if home_state else None
+        if self.geofencing_source == GEOFENCING_SOURCE_HA:
+            return await self.async_ha_presence_check(home_state)
+        # Default: GEOFENCING_SOURCE_TADO
         try:
             # Get home presence state (re-use provided state to avoid extra call)
             if home_state is None:
