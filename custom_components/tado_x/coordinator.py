@@ -101,6 +101,14 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         self.room_configs = room_configs or []
         self.offset_hysteresis = offset_hysteresis
         self._pending_offset_updates: dict[str, float] = {}
+        
+        _LOGGER.info(
+            "TadoXDataUpdateCoordinator initialized - Home: %s (ID: %s), Geofencing: %s, Auto Offset Sync: %s",
+            home_name,
+            home_id,
+            geofencing_enabled,
+            auto_offset_sync,
+        )
 
     async def async_batch_update_temperature_offsets(
         self, offsets: dict[str, float]
@@ -135,30 +143,48 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             if home_state is None:
                 home_state = await self.api.get_home_state()
             presence = home_state.get("presence")
+            _LOGGER.info("Geofencing check - Current presence: %s", presence)
 
             # Get mobile devices
             mobile_devices = await self.api.get_mobile_devices()
+            _LOGGER.info("Geofencing check - Retrieved %d mobile devices", len(mobile_devices))
+            
             devices_home = []
             for device in mobile_devices:
+                device_name = device.get("name", "Unknown")
                 geo_enabled = device.get("settings", {}).get("geoTrackingEnabled", False)
                 location = device.get("location")
+                at_home = location.get("atHome") if location else None
+                
+                _LOGGER.debug(
+                    "Geofencing check - Device: %s, GeoTracking: %s, AtHome: %s",
+                    device_name,
+                    geo_enabled,
+                    at_home,
+                )
+                
                 if geo_enabled and location and location.get("atHome"):
-                    devices_home.append(device.get("name"))
+                    devices_home.append(device_name)
+
+            _LOGGER.info("Geofencing check - Devices at home: %s", devices_home)
 
             # Geofencing logic (copy from tado_aa)
             if len(devices_home) > 0 and presence == "AWAY":
                 # Devices are home, but home is in AWAY mode: set HOME
+                _LOGGER.info("Geofencing: Devices %s at home, switching to HOME mode.", devices_home)
                 await self.api.set_presence("HOME")
                 presence = "HOME"  # Update presence to reflect the change
-                _LOGGER.info("Geofencing: Devices at home, switching to HOME mode.")
             elif len(devices_home) == 0 and presence == "HOME":
                 # No devices at home, but home is in HOME mode: set AWAY
+                _LOGGER.info("Geofencing: No devices at home, switching to AWAY mode.")
                 await self.api.set_presence("AWAY")
                 presence = "AWAY"  # Update presence to reflect the change
-                _LOGGER.info("Geofencing: No devices at home, switching to AWAY mode.")
+            else:
+                _LOGGER.info("Geofencing: No change needed (Presence: %s, Devices home: %d)", presence, len(devices_home))
+            
             return presence
         except Exception as e:
-            _LOGGER.error(f"Geofencing check failed: {e}")
+            _LOGGER.error("Geofencing check failed: %s", e, exc_info=True)
             return home_state.get("presence") if home_state else None
 
     async def _async_update_data(self) -> TadoXData:
@@ -169,10 +195,14 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             presence = home_state.get("presence")
 
             # Run geofencing check if enabled and update presence with result
+            _LOGGER.debug("Geofencing enabled: %s", self.geofencing_enabled)
             if self.geofencing_enabled:
+                _LOGGER.info("Running geofencing check...")
                 updated_presence = await self.async_geofencing_check(home_state)
                 if updated_presence is not None:
                     presence = updated_presence
+            else:
+                _LOGGER.debug("Geofencing is disabled, skipping check")
             # Get rooms with current state
             rooms_data = await self.api.get_rooms()
 

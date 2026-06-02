@@ -12,7 +12,7 @@ batch_update_temperature_offsets:
 
 set_presence:
   name: Set Home Presence
-  description: Manually set the home presence state (HOME or AWAY) for geofencing control.
+  description: Manually lock the home presence state (HOME or AWAY) for geofencing control. Use AUTO to release the lock and return to automatic geofencing.
   fields:
     presence:
       name: Presence
@@ -24,3 +24,4 @@ set_presence:
           options:
             - "HOME"
             - "AWAY"
+            - "AUTO"

@@ -236,10 +236,10 @@ class TadoXApi:
                         headers=headers,
                         json=json_data,
                     ) as retry_response:
-                        if retry_response.status != 200:
+                        if retry_response.status not in (200, 204):
                             text = await retry_response.text()
                             raise TadoXApiError(f"API error: {retry_response.status} - {text}")
-                        if retry_response.content_length == 0:
+                        if retry_response.content_length == 0 or retry_response.status == 204:
                             return None
                         return await retry_response.json()
 
@@ -280,10 +280,20 @@ class TadoXApi:
         return result if isinstance(result, list) else []
 
     async def set_presence(self, presence: str) -> None:
-        """Set the home presence (HOME or AWAY)."""
+        """Lock the home presence to HOME or AWAY (overrides geofencing).
+
+        Pass "AUTO" to release the lock and return to automatic geofencing.
+        Uses Tado's v2 `presenceLock` endpoint — the older `presence` endpoint
+        does not exist and returns 404.
+        """
         if not self._home_id:
             raise TadoXApiError("Home ID not set")
-        await self._request("PUT", f"{TADO_MY_API_URL}/homes/{self._home_id}/presence", json_data={"presence": presence})
+        url = f"{TADO_MY_API_URL}/homes/{self._home_id}/presenceLock"
+        normalized = (presence or "").upper()
+        if normalized == "AUTO":
+            await self._request("DELETE", url)
+        else:
+            await self._request("PUT", url, json_data={"homePresence": normalized})
 
     # Hops Tado API endpoints (Tado X specific)
     async def get_rooms(self) -> list[dict[str, Any]]:
