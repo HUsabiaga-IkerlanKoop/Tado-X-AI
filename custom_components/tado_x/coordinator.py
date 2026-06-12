@@ -180,24 +180,32 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
     async def _apply_presence_decision(
         self, any_home: bool, known: int, devices_home: list[str], current_presence: str | None
     ) -> str | None:
-        """Apply HOME/AWAY decision against current Tado presence."""
+        """Apply HOME/AWAY decision against current Tado presence.
+
+        Always re-asserts the presenceLock (even when Tado already reports the
+        target state) so the Tado mobile app never falls back to its native
+        "confirm switch" prompt — the lock is an unconditional server-side
+        override.
+        """
         if known == 0:
             _LOGGER.debug("HA presence: no known trackers, leaving presence unchanged")
             return current_presence
-        if any_home and current_presence != "HOME":
-            _LOGGER.info("HA presence: %s at home, switching Tado to HOME", devices_home)
-            await self.api.set_presence("HOME")
-            return "HOME"
-        if not any_home and current_presence != "AWAY":
-            _LOGGER.info("HA presence: nobody home, switching Tado to AWAY")
-            await self.api.set_presence("AWAY")
-            return "AWAY"
-        _LOGGER.debug(
-            "HA presence: no change needed (Tado=%s, any_home=%s)",
-            current_presence,
-            any_home,
-        )
-        return current_presence
+        target = "HOME" if any_home else "AWAY"
+        if target != current_presence:
+            _LOGGER.info(
+                "HA presence: switching Tado %s -> %s (devices home: %s)",
+                current_presence,
+                target,
+                devices_home,
+            )
+        else:
+            _LOGGER.debug(
+                "HA presence: re-asserting lock=%s (devices home: %s)",
+                target,
+                devices_home,
+            )
+        await self.api.set_presence(target)
+        return target
 
     async def async_ha_presence_check(self, home_state: dict[str, Any] | None = None) -> str | None:
         """Evaluate HA presence entities and sync Tado presence accordingly."""
@@ -304,20 +312,17 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
 
             _LOGGER.info("Geofencing check - Devices at home: %s", devices_home)
 
-            # Geofencing logic (copy from tado_aa)
-            if len(devices_home) > 0 and presence == "AWAY":
-                # Devices are home, but home is in AWAY mode: set HOME
-                _LOGGER.info("Geofencing: Devices %s at home, switching to HOME mode.", devices_home)
-                await self.api.set_presence("HOME")
-                presence = "HOME"  # Update presence to reflect the change
-            elif len(devices_home) == 0 and presence == "HOME":
-                # No devices at home, but home is in HOME mode: set AWAY
-                _LOGGER.info("Geofencing: No devices at home, switching to AWAY mode.")
-                await self.api.set_presence("AWAY")
-                presence = "AWAY"  # Update presence to reflect the change
+            # Always re-assert the lock so Tado's app never prompts the user to
+            # confirm a HOME/AWAY switch — the presenceLock is an unconditional
+            # server-side override and idempotent if already in that state.
+            target = "HOME" if devices_home else "AWAY"
+            if target != presence:
+                _LOGGER.info("Geofencing: switching Tado %s -> %s", presence, target)
             else:
-                _LOGGER.info("Geofencing: No change needed (Presence: %s, Devices home: %d)", presence, len(devices_home))
-            
+                _LOGGER.debug("Geofencing: re-asserting lock=%s", target)
+            await self.api.set_presence(target)
+            presence = target
+
             return presence
         except Exception as e:
             _LOGGER.error("Geofencing check failed: %s", e, exc_info=True)
