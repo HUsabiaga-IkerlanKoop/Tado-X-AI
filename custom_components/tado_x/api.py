@@ -75,35 +75,30 @@ class TadoXApi:
 
         Returns a dict with device_code, user_code, verification_uri, etc.
         """
-        _LOGGER.warning("Starting device authorization flow")
-        timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
+        _LOGGER.debug("Starting device authorization flow")
+        timeout = aiohttp.ClientTimeout(total=15, connect=5, sock_read=10)
 
-        # Use existing session but enforce timeout
         try:
-            _LOGGER.warning("Sending request to %s", TADO_AUTH_URL)
             async with self._session.post(
                 TADO_AUTH_URL,
                 data={
                     "client_id": TADO_CLIENT_ID,
                     "scope": "offline_access",
                 },
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Connection": "close",
-                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=timeout,
             ) as response:
-                _LOGGER.warning("Device auth response status: %s", response.status)
+                _LOGGER.debug("Device auth response status: %s", response.status)
                 if response.status != 200:
                     text = await response.text()
                     _LOGGER.error("Failed to start device auth: %s - %s", response.status, text)
                     raise TadoXAuthError(f"Failed to start device auth: {response.status}")
                 result = await response.json()
-                _LOGGER.warning("Device auth successful, got user_code: %s", result.get("user_code"))
+                _LOGGER.debug("Device auth successful, got user_code: %s", result.get("user_code"))
                 return result
         except asyncio.TimeoutError as err:
-            _LOGGER.error("Timeout during device auth request (30s)")
-            raise TadoXAuthError("Timeout during device auth request") from err
+            _LOGGER.error("Timeout during device auth request (15s) - Tado OAuth is slow or unreachable")
+            raise TadoXAuthError("Tado OAuth timeout - please retry") from err
         except aiohttp.ClientError as err:
             _LOGGER.error("Network error during device auth: %s (type: %s)", err, type(err).__name__)
             raise TadoXAuthError(f"Network error: {err}") from err
