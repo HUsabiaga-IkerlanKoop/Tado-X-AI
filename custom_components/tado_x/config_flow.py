@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import aiohttp
 import voluptuous as vol
@@ -35,9 +36,32 @@ from .const import (
     MAX_TEMP,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    TADO_CLIENT_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _build_verification_url(auth_data: dict[str, Any]) -> str:
+    """Return a device-flow verification URL that includes user_code and client_id.
+
+    Tado's OAuth response provides ``verification_uri_complete`` with only
+    ``user_code`` appended; their page rejects requests missing ``client_id``
+    with ``invalid_request / missing_client_id``. We normalise the URL here so
+    both initial setup and reauth produce a working link.
+    """
+    url = (
+        auth_data.get("verification_uri_complete")
+        or auth_data.get("verification_uri")
+        or "https://login.tado.com/oauth2/device"
+    )
+    user_code = auth_data.get("user_code")
+    parts = urlparse(url)
+    params = dict(parse_qsl(parts.query, keep_blank_values=True))
+    if user_code and "user_code" not in params:
+        params["user_code"] = user_code
+    params.setdefault("client_id", TADO_CLIENT_ID)
+    return urlunparse(parts._replace(query=urlencode(params)))
 
 
 class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -81,10 +105,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
                 auth_data = await self._api.start_device_auth()
                 self._device_code = auth_data["device_code"]
                 self._user_code = auth_data["user_code"]
-                self._verification_uri = auth_data.get(
-                    "verification_uri_complete",
-                    auth_data.get("verification_uri", "https://login.tado.com/oauth2/device")
-                )
+                self._verification_uri = _build_verification_url(auth_data)
                 return await self.async_step_auth()
 
             except TadoXAuthError as err:
@@ -270,10 +291,7 @@ class TadoXConfigFlow(ConfigFlow, domain=DOMAIN):
                 auth_data = await self._api.start_device_auth()
                 self._device_code = auth_data["device_code"]
                 self._user_code = auth_data["user_code"]
-                self._verification_uri = auth_data.get(
-                    "verification_uri_complete",
-                    auth_data.get("verification_uri")
-                )
+                self._verification_uri = _build_verification_url(auth_data)
                 return await self.async_step_reauth_auth()
 
             except TadoXAuthError as err:
